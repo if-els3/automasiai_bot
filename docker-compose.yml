@@ -5,39 +5,23 @@ services:
     image: docker.n8n.io/n8nio/n8n:latest
     container_name: n8n_threat_alert
     restart: unless-stopped
-    
-    # Timezone Configuration
-    environment:
-      - TZ=Asia/Jakarta
-services:
-  n8n:
-    image: docker.n8n.io/n8nio/n8n
-    restart: always
     ports:
       - "5678:5678"
     environment:
+      - TZ=Asia/Jakarta
       - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
       - NODE_ENV=production
       - WEBHOOK_URL=http://localhost:5678/
       - EXECUTION_PROCESS=main
-      
-    # Volume Persistence
+      - GENERIC_TIMEZONE=Asia/Jakarta
     volumes:
       - n8n_data:/home/node/.n8n
       - ./workflows:/home/node/.n8n/workflows
       - ./credentials:/home/node/.n8n/credentials
-    
-    # Port Mapping
-    ports:
-      - "5678:5678"
-    
-    # Network Configuration
     networks:
       - n8n_network
-    
-    # Resource Limits (optional)
     deploy:
       resources:
         limits:
@@ -54,10 +38,3 @@ volumes:
 networks:
   n8n_network:
     driver: bridge
-      - WEBHOOK_URL=https://${CODESPACE_NAME}-5678.app.github.dev/ # Penting untuk Webhook!
-      - GENERIC_TIMEZONE=Asia/Jakarta
-    volumes:
-      - n8n_data:/home/node/.n8n
-
-volumes:
-  n8n_data:
