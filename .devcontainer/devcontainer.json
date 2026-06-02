@@ -1,8 +1,8 @@
 {
   "name": "Automated Threat Triage Bot",
-  "dockerComposeFile": "../docker-compose.yml",
+  "dockerComposeFile": "docker-compose.yml",
   "service": "n8n",
-  "workspaceFolder": "/workspaces",
+  "workspaceFolder": "/workspaces/automasial_bot",
   "forwardPorts": [5678],
   "portsAttributes": {
     "5678": {
@@ -10,5 +10,5 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "echo 'Environment Ready' && ls -la"
+  "postCreateCommand": "echo 'Environment Ready!' && docker ps"
 }
