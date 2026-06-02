@@ -1,5 +1,4 @@
 version: '3.8'
-<<<<<<< HEAD
 
 services:
   n8n:
@@ -10,7 +9,6 @@ services:
     # Timezone Configuration
     environment:
       - TZ=Asia/Jakarta
-=======
 services:
   n8n:
     image: docker.n8n.io/n8nio/n8n
@@ -18,12 +16,10 @@ services:
     ports:
       - "5678:5678"
     environment:
->>>>>>> 9af58c6 (adding docker config)
       - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
       - NODE_ENV=production
-<<<<<<< HEAD
       - WEBHOOK_URL=http://localhost:5678/
       - EXECUTION_PROCESS=main
       
@@ -58,7 +54,6 @@ volumes:
 networks:
   n8n_network:
     driver: bridge
-=======
       - WEBHOOK_URL=https://${CODESPACE_NAME}-5678.app.github.dev/ # Penting untuk Webhook!
       - GENERIC_TIMEZONE=Asia/Jakarta
     volumes:
@@ -66,4 +61,3 @@ networks:
 
 volumes:
   n8n_data:
->>>>>>> 9af58c6 (adding docker config)
