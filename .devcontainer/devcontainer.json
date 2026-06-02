@@ -10,5 +10,5 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "echo 'Environment Ready!' && docker ps"
+  "postCreateCommand": "echo 'Environment Ready!' "
 }
