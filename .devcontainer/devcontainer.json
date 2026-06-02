@@ -1,0 +1,14 @@
+{
+  "name": "Automated Threat Triage Bot",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "n8n",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [5678],
+  "portsAttributes": {
+    "5678": {
+      "label": "n8n Workflow Editor",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "echo 'Environment Ready!'"
+}
