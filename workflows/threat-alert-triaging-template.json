@@ -1,0 +1,261 @@
+{
+  "name": "Automated Threat Alert Triaging",
+  "description": "Complete threat alert workflow with multi-stage enrichment and intelligent routing",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webhook/threat-alert",
+        "responseMode": "onReceived",
+        "responseData": "successResponse"
+      },
+      "id": "1",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "threat-alert-webhook"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.abuseipdb.com/api/v2/check",
+        "authentication": "genericCredentialType",
+        "genericCredentials": "abuseipdb_credentials",
+        "qs": {
+          "ipAddress": "={{ $json.body.ip_address }}",
+          "maxAgeInDays": 90,
+          "verbose": ""
+        },
+        "headers": {
+          "Key": "={{ $credentials.abuseipdb_api_key }}",
+          "Accept": "application/json"
+        }
+      },
+      "id": "2",
+      "name": "AbuseIPDB Enrichment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [450, 300],
+      "credentials": {
+        "genericCredentialType": "abuseipdb_credentials"
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.virustotal.com/api/v3/ip_addresses/={{ $json.body.ip_address }}",
+        "authentication": "genericCredentialType",
+        "genericCredentials": "virustotal_credentials",
+        "headers": {
+          "x-apikey": "={{ $credentials.virustotal_api_key }}"
+        }
+      },
+      "id": "3",
+      "name": "VirusTotal Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [650, 300],
+      "credentials": {
+        "genericCredentialType": "virustotal_credentials"
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+        "authentication": "genericCredentialType",
+        "genericCredentials": "gemini_credentials",
+        "sendBody": true,
+        "bodyParametersJson": "{\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Analyze the following security threat data and provide a risk assessment (critical/high/medium/low) and recommended actions. Data: IP={{ $json.body.ip_address }}, AbuseIPDB Score={{ $nodeExecutionData[\\\"AbuseIPDB Enrichment\\\"][0].json.data.abuseConfidenceScore || 0 }}, VirusTotal Malicious={{ $nodeExecutionData[\\\"VirusTotal Check\\\"][0].json.data.last_analysis_stats.malicious || 0 }}. Return as JSON with fields: risk_level, confidence_score, recommended_actions, analysis_summary\"\n        }\n      ]\n    }\n  ]\n}\n",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "options": {}
+      },
+      "id": "4",
+      "name": "Gemini AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 300],
+      "credentials": {
+        "genericCredentialType": "gemini_credentials"
+      }
+    },
+    {
+      "parameters": {
+        "code": "// Parse Gemini response and extract JSON\nconst geminiResponse = $input.all()[0].json;\n\nlet aiAnalysis = {\n  risk_level: 'unknown',\n  confidence_score: 0,\n  recommended_actions: [],\n  analysis_summary: '',\n  is_critical: false\n};\n\ntry {\n  // Extract text from Gemini response\n  if (geminiResponse.candidates && geminiResponse.candidates[0]) {\n    const content = geminiResponse.candidates[0].content.parts[0].text;\n    \n    // Try to parse JSON from response\n    const jsonMatch = content.match(/\\{[^{}]*\\}/g);\n    if (jsonMatch) {\n      const parsed = JSON.parse(jsonMatch[0]);\n      aiAnalysis = {\n        ...aiAnalysis,\n        ...parsed,\n        is_critical: parsed.risk_level === 'critical'\n      };\n    }\n  }\n} catch (error) {\n  console.log('Error parsing AI response:', error.message);\n}\n\nreturn {\n  ...aiAnalysis,\n  timestamp: new Date().toISOString(),\n  threat_data: {\n    ip_address: $input.all()[0].body.ip_address,\n    abuseipdb_score: $input.all()[1].json.data?.abuseConfidenceScore || 0,\n    virustotal_malicious: $input.all()[2].json.data?.last_analysis_stats?.malicious || 0\n  }\n};"
+      },
+      "id": "5",
+      "name": "JSON Parser & Enricher",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.is_critical }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "6",
+      "name": "Is Critical Threat?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $credentials.telegram_chat_id }}",
+        "text": "🚨 *CRITICAL THREAT ALERT* 🚨\n\n*IP Address:* `{{ $json.threat_data.ip_address }}`\n*Risk Level:* {{ $json.risk_level }}\n*Confidence Score:* {{ $json.confidence_score }}%\n*AbuseIPDB Score:* {{ $json.threat_data.abuseipdb_score }}\n*VirusTotal Malicious:* {{ $json.threat_data.virustotal_malicious }}\n\n*Analysis:*\n{{ $json.analysis_summary }}\n\n*Recommended Actions:*\n{{ $json.recommended_actions.join('\\n') }}\n\n*Timestamp:* {{ $json.timestamp }}\n\n#SecurityAlert #ThreatIntelligence",
+        "parseMode": "Markdown",
+        "authentication": "predefinedCredentialType",
+        "botToken": "={{ $credentials.telegram_bot_token }}"
+      },
+      "id": "7",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1450, 150],
+      "credentials": {
+        "telegramApi": "telegram_credentials"
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "create",
+        "repository": "if-els3/automasiai_bot",
+        "title": "🚨 Critical Security Threat: {{ $json.threat_data.ip_address }}",
+        "body": "## Critical Threat Alert\n\n### Threat Summary\n- **IP Address**: `{{ $json.threat_data.ip_address }}`\n- **Risk Level**: **{{ $json.risk_level }}** 🔴\n- **Confidence Score**: {{ $json.confidence_score }}%\n- **Detection Time**: {{ $json.timestamp }}\n\n### Threat Intelligence\n\n#### AbuseIPDB Data\n- **Abuse Confidence Score**: {{ $json.threat_data.abuseipdb_score }}/100\n- **Status**: {% if $json.threat_data.abuseipdb_score > 75 %}Highly Malicious{% else %}Suspicious{% endif %}\n\n#### VirusTotal Data\n- **Malicious Detections**: {{ $json.threat_data.virustotal_malicious }}\n\n### AI Analysis\n{{ $json.analysis_summary }}\n\n### Recommended Actions\n{% for action in $json.recommended_actions %}\n- {{ action }}\n{% endfor %}\n\n### Next Steps\n1. ✅ Review threat intelligence above\n2. 🔒 Implement recommended mitigations\n3. 📋 Update firewall/security rules\n4. 📊 Monitor for related incidents\n\n---\n**Created by**: Automated Threat Alert Triaging System\n**Labels**: security, critical, threat-intelligence, automated",
+        "labels": [
+          "security-critical",
+          "threat-alert",
+          "automated",
+          "requires-action"
+        ],
+        "assignees": [
+          "if-els3"
+        ]
+      },
+      "id": "8",
+      "name": "Create GitHub Issue",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 2,
+      "position": [1450, 300],
+      "credentials": {
+        "githubApi": "github_oauth_credentials"
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $credentials.telegram_chat_id }}",
+        "text": "ℹ️ *Threat Alert* - Risk Level: {{ $json.risk_level }}\nIP: `{{ $json.threat_data.ip_address }}`\nStatus: Logged and monitored\n#ThreatMonitoring",
+        "parseMode": "Markdown",
+        "authentication": "predefinedCredentialType",
+        "botToken": "={{ $credentials.telegram_bot_token }}"
+      },
+      "id": "9",
+      "name": "Send Telegram Info",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1450, 450],
+      "credentials": {
+        "telegramApi": "telegram_credentials"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "AbuseIPDB Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AbuseIPDB Enrichment": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal Check": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "JSON Parser & Enricher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JSON Parser & Enricher": {
+      "main": [
+        [
+          {
+            "node": "Is Critical Threat?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Critical Threat?": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create GitHub Issue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Telegram Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "id": "threat-alert-triaging",
+  "meta": {
+    "instanceId": "n8n_threat_alert",
+    "created": "2026-06-02T00:00:00.000Z",
+    "updated": "2026-06-02T00:00:00.000Z"
+  }
+}
